@@ -1,0 +1,86 @@
+name: Build Nano Matter app
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/dbloemers/mgm240-ha-apps
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch pinned source revisions
+        run: bash prepare-sources.sh
+      - name: Build image
+        env:
+          HA_ARCH: ${{ matrix.arch }}
+        run: |
+          version=$(sed -n 's/^version: "\(.*\)"$/\1/p' esphome_mgm240/config.yaml)
+          test -n "$version"
+          docker build --progress=plain --tag nano-matter-ci \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "io.hass.name=ESPHome Device Builder (Nano Matter)" \
+            --label "io.hass.version=$version" \
+            --label "io.hass.arch=$HA_ARCH" \
+            --label "io.hass.type=addon" \
+            esphome_mgm240
+      - name: Compile Nano Matter firmware inside the image
+        run: |
+          docker run --rm --entrypoint /bin/bash nano-matter-ci -euc '
+            export CMAKE_BUILD_PARALLEL_LEVEL=2
+            esphome compile /opt/nano-matter-smoke.yaml
+            test -s /opt/.esphome/build/nano-matter-smoke/.pioenvs/nano-matter-smoke/zephyr/zephyr.hex
+          '
+      - name: Push tested architecture image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HA_ARCH: ${{ matrix.arch }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          tag="$IMAGE:ci-$GITHUB_SHA-$GITHUB_RUN_ID-$HA_ARCH"
+          docker tag nano-matter-ci "$tag"
+          docker push "$tag"
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Publish multi-architecture image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          tag="$IMAGE:ci-$GITHUB_SHA-$GITHUB_RUN_ID"
+          docker buildx imagetools create --tag "$tag" "$tag-amd64" "$tag-aarch64"
+          docker buildx imagetools inspect "$tag"
+          version=$(sed -n 's/^version: "\(.*\)"$/\1/p' esphome_mgm240/config.yaml)
+          test -n "$version"
+          if docker buildx imagetools inspect "$IMAGE:$version" >/dev/null 2>&1; then
+            echo "Version $version already exists. Bump config.yaml to publish another image."
+          else
+            docker buildx imagetools create --tag "$IMAGE:$version" "$tag"
+          fi

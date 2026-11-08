@@ -1,0 +1,34 @@
+esphome:
+  name: nano-matter-smoke
+  on_boot:
+    priority: -100
+    then:
+      - logger.log: "Nano Matter ESPHome smoke ready"
+
+efr32:
+  board: arduino_nano_matter
+
+logger:
+
+output:
+  - platform: gpio
+    id: red_led
+    pin:
+      number: PC1
+      inverted: true
+
+binary_sensor:
+  - platform: gpio
+    name: Nano Matter button
+    pin:
+      number: PA0
+      inverted: true
+      mode: INPUT_PULLUP
+    filters:
+      - delayed_on_off: 20ms
+    on_press:
+      - output.turn_on: red_led
+      - logger.log: "Nano Matter button pressed, red LED on"
+    on_release:
+      - output.turn_off: red_led
+      - logger.log: "Nano Matter button released, red LED off"
