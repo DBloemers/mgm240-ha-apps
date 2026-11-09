@@ -15,3 +15,4 @@ panel_icon: mdi:chip
 hassio_api: true
 auth_api: true
 host_network: true
+image: ghcr.io/dbloemers/mgm240-ha-apps
