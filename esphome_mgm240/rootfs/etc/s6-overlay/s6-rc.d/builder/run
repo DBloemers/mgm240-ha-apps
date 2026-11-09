@@ -13,5 +13,15 @@ if [[ ! -f /data/.nano-matter-initialized ]]; then
     touch /data/.nano-matter-initialized
 fi
 
+if bashio::config.true 'probe_nano_matter'; then
+    bashio::log.info "Probing the Nano Matter debugger over USB"
+    if openocd -f "$ZEPHYR_BASE/boards/arduino/nano_matter/support/openocd.cfg" \
+        -f /opt/nano-matter-probe.cfg -c init -c targets -c shutdown; then
+        bashio::log.info "Nano Matter USB probe succeeded"
+    else
+        bashio::log.warning "Nano Matter USB probe failed"
+    fi
+fi
+
 exec esphome-device-builder /data/configs \
     --ha-addon --ingress-port "$(bashio::addon.ingress_port)"

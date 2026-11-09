@@ -51,6 +51,13 @@ jobs:
             esphome compile /opt/nano-matter-smoke.yaml
             test -s /opt/.esphome/build/nano-matter-smoke/.pioenvs/nano-matter-smoke/zephyr/zephyr.hex
           '
+      - name: Check OpenOCD USB backend and Nano Matter configuration
+        run: |
+          docker run --rm --entrypoint /bin/bash nano-matter-ci -euc '
+            ldd "$(command -v openocd)" | grep libhidapi-libusb
+            openocd -f "$ZEPHYR_BASE/boards/arduino/nano_matter/support/openocd.cfg" \
+              -f /opt/nano-matter-probe.cfg -c shutdown
+          '
       - name: Push tested architecture image
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}

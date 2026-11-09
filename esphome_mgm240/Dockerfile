@@ -2,6 +2,7 @@ FROM ghcr.io/esphome/docker-base:debian-ha-addon-2026.11.0@sha256:2bdf027456ba4f
 
 ARG ZEPHYR_REV=5b3759483217d228f160f6173cbcef7974b623ff
 ARG ZEPHYR_SDK_VERSION=1.0.1
+ARG OPENOCD_REV=3ed8fad9d5129d25f156c1386f5dcd758247f01b
 
 ENV ZEPHYR_BASE=/opt/zephyr-workspace/zephyr \
     ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
@@ -34,6 +35,23 @@ RUN cd /opt/zephyr-workspace \
     && west sdk install --version "$ZEPHYR_SDK_VERSION" \
         -d "$ZEPHYR_SDK_INSTALL_DIR" -t arm-zephyr-eabi -H
 
+# Use HIDAPI's libusb backend so the app can use Home Assistant's raw USB mapping.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        autoconf automake libhidapi-dev libjim-dev libtool libusb-1.0-0-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/* \
+    && git init /tmp/openocd \
+    && cd /tmp/openocd \
+    && git fetch --depth 1 https://github.com/openocd-org/openocd.git "$OPENOCD_REV" \
+    && git checkout --detach FETCH_HEAD \
+    && ./bootstrap \
+    && HIDAPI_CFLAGS="$(pkg-config --cflags hidapi-libusb)" \
+        HIDAPI_LIBS="$(pkg-config --libs hidapi-libusb)" \
+        ./configure --enable-cmsis-dap --disable-werror \
+    && make -j2 \
+    && make install \
+    && rm -rf /tmp/openocd
+
 COPY sources.tar.gz /tmp/sources.tar.gz
 RUN mkdir -p /tmp/esphome-sources \
     && tar -xzf /tmp/sources.tar.gz -C /tmp/esphome-sources \
@@ -44,5 +62,6 @@ RUN mkdir -p /tmp/esphome-sources \
     && esphome-device-builder --version
 
 COPY nano-matter-smoke.yaml /opt/nano-matter-smoke.yaml
+COPY nano-matter-probe.cfg /opt/nano-matter-probe.cfg
 COPY rootfs/ /
 RUN chmod 755 /etc/s6-overlay/s6-rc.d/builder/run /etc/s6-overlay/s6-rc.d/builder/finish

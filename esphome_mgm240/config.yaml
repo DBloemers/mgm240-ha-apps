@@ -1,5 +1,5 @@
 name: ESPHome Device Builder (Nano Matter)
-version: "0.1.1"
+version: "0.1.2"
 slug: esphome_mgm240
 description: Experimental ESPHome Device Builder for the Arduino Nano Matter.
 arch:
@@ -15,4 +15,9 @@ panel_icon: mdi:chip
 hassio_api: true
 auth_api: true
 host_network: true
+usb: true
+options:
+  probe_nano_matter: false
+schema:
+  probe_nano_matter: bool
 image: ghcr.io/dbloemers/mgm240-ha-apps
